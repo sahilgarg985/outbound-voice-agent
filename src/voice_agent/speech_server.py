@@ -83,7 +83,9 @@ async def transcriptions(
         audio = np.interp(np.linspace(0, len(audio), n, endpoint=False), np.arange(len(audio)), audio)
         audio = audio.astype(np.float32)
     t = time.perf_counter()
-    segments, _ = whisper().transcribe(audio, language="en", beam_size=1, initial_prompt=prompt or None)
+    segments, _ = whisper().transcribe(
+        audio, language="en", beam_size=1, vad_filter=True, initial_prompt=prompt or None
+    )
     text = " ".join(s.text.strip() for s in segments).strip()
     log.info("stt %.0fms: %r", (time.perf_counter() - t) * 1000, text)
     return {"text": text}

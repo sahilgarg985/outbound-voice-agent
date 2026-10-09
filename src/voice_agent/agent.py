@@ -23,6 +23,7 @@ from livekit.agents import (
     function_tool,
     get_job_context,
 )
+from livekit.agents.beta import EndCallTool
 from livekit.agents.voice import RecordingOptions
 from livekit.plugins import openai, silero
 from livekit.plugins.turn_detector.english import EnglishModel
@@ -60,10 +61,20 @@ def _names_match(said: str, patient: Patient) -> bool:
     return heard(patient.first_name) and heard(patient.last_name)
 
 
+async def _record_end_call(ev) -> None:
+    state: CallState = ev.ctx.userdata
+    state.record_tool("end_call", {}, "ok", ok=True, started=time.time())
+    if state.end_reason == "unknown":
+        state.end_reason = "agent ended call"
+
+
 class CareCoordinator(Agent):
     def __init__(self, state: CallState) -> None:
         p = state.context.patient
-        super().__init__(instructions=agent_instructions(p, settings.clinic_name, settings.agent_persona))
+        super().__init__(
+            instructions=agent_instructions(p, settings.clinic_name, settings.agent_persona),
+            tools=[EndCallTool(on_tool_called=_record_end_call)],
+        )
 
     @function_tool()
     async def verify_identity(self, context: RunContext[CallState], full_name: str, date_of_birth: str) -> dict:
@@ -178,7 +189,7 @@ class CareCoordinator(Agent):
             "confirmation_id": booking.confirmation_id,
             "description": booking.slot.spoken,
             "next_step": "Read back the day, time, doctor and this confirmation_id. Ask if there is anything else. "
-            "When the patient is done, say goodbye and call end_call.",
+            "When the patient is done, call end_call.",
         }
         state.record_tool("book_appointment", args, result, ok=True, started=started)
         return result
@@ -201,19 +212,6 @@ class CareCoordinator(Agent):
     async def detected_answering_machine(self, context: RunContext[CallState]) -> None:
         """Call this when you reach a voicemail or answering machine (after hearing the greeting)."""
         await _handle_voicemail(context.session, context.userdata, source="llm")
-
-    @function_tool()
-    async def end_call(self, context: RunContext[CallState], reason: str) -> None:
-        """Hang up the phone. Use this after your goodbye; do not mention it to the patient.
-
-        Args:
-            reason: Why the call is ending, e.g. "booked", "declined", "wrong person", "patient request".
-        """
-        state = context.userdata
-        state.record_tool("end_call", {"reason": reason}, "ok", ok=True, started=time.time())
-        state.end_reason = reason
-        await context.wait_for_playout()
-        await _hang_up(context.session)
 
 
 async def _hang_up(session: AgentSession) -> None:

@@ -1,0 +1,54 @@
+[project]
+name = "voice-agent"
+version = "0.1.0"
+description = "Outbound healthcare voice agent built on LiveKit, with post-call analysis and Opik tracing"
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+    "livekit-agents[openai,silero,turn-detector]>=1.8.5",
+    "livekit-api>=1.2.1",
+    "numpy>=2.5.3",
+    "opik>=2.2.93",
+    "pydantic>=2.13.5",
+    "pydantic-settings>=2.15.0",
+    "python-dotenv>=1.2.4",
+]
+
+[project.optional-dependencies]
+speech = [
+    "fastapi>=0.142.2",
+    "faster-whisper>=1.2.1",
+    "kokoro-onnx>=0.6.1",
+    "python-multipart>=0.0.32",
+    "soundfile>=0.14.0",
+    "uvicorn[standard]>=0.54.0",
+]
+dev = [
+    "pytest>=9.1.1",
+    "pytest-asyncio>=1.4.0",
+    "ruff>=0.16.10",
+]
+
+[build-system]
+requires = ["setuptools>=69"]
+build-backend = "setuptools.build_meta"
+
+[project.scripts]
+agent = "voice_agent.agent:main"
+speech-server = "voice_agent.speech_server:main"
+trigger-call = "voice_agent.trigger_call:main"
+
+[tool.ruff]
+line-length = 120
+target-version = "py312"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B"]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+
+[tool.ruff.lint.per-file-ignores]
+"src/voice_agent/prompts.py" = ["E501"]
+"src/voice_agent/analysis.py" = ["E501"]
+"src/voice_agent/speech_server.py" = ["B008"]

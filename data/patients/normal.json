@@ -1,0 +1,12 @@
+{
+  "patient_id": "P-1004",
+  "first_name": "Sam",
+  "last_name": "Carter",
+  "date_of_birth": "2001-09-21",
+  "phone_number": "+917303592869",
+  "ordering_physician": "Dr. Alvarez",
+  "biomarkers": [
+    {"name": "hba1c", "value": 5.3, "unit": "%", "measured_on": "2026-10-03"},
+    {"name": "fasting_glucose", "value": 88, "unit": "mg/dL", "measured_on": "2026-10-03"}
+  ]
+}

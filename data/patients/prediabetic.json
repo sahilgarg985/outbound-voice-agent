@@ -1,0 +1,12 @@
+{
+  "patient_id": "P-1001",
+  "first_name": "Sam",
+  "last_name": "Carter",
+  "date_of_birth": "2001-09-21",
+  "phone_number": "+917303592869",
+  "ordering_physician": "Dr. Mehta",
+  "biomarkers": [
+    {"name": "hba1c", "value": 6.1, "unit": "%", "measured_on": "2026-10-01"},
+    {"name": "fasting_glucose", "value": 112, "unit": "mg/dL", "measured_on": "2026-10-01"}
+  ]
+}

@@ -7,6 +7,7 @@ import time
 from datetime import date
 from difflib import SequenceMatcher
 from pathlib import Path
+from typing import Literal
 
 from livekit import api
 from livekit.agents import (
@@ -35,9 +36,10 @@ from .config import PROJECT_ROOT, get_settings
 from .models import CallContext, CallOutcome, Patient
 from .opik_integration import attach_opik
 from .prompts import agent_instructions, opening_line
-from .scheduling import SLOT_TIMES, Scheduler, SlotUnavailableError
+from .scheduling import SLOT_TIMES, Scheduler, SlotUnavailableError, resolve_day
 
 log = logging.getLogger("voice_agent")
+Day = Literal["tomorrow", "monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday"]
 settings = get_settings()
 
 _CALLS: dict[str, CallState] = {}
@@ -126,30 +128,34 @@ class CareCoordinator(Agent):
 
     @function_tool()
     async def get_available_slots(
-        self, context: RunContext[CallState], preferred_date: str | None = None, part_of_day: str | None = None
+        self,
+        context: RunContext[CallState],
+        day: Day | None = None,
+        part_of_day: Literal["morning", "afternoon", "evening"] | None = None,
     ) -> dict:
         """Look up open consultation slots.
 
         Args:
-            preferred_date: Only if the patient asked for a specific day: that date in YYYY-MM-DD format.
-                Leave empty otherwise, so the earliest open slots are offered.
+            day: Only if the patient named a day. Leave empty otherwise, so the earliest open slots are offered.
             part_of_day: "morning", "afternoon" or "evening" if the patient has a preference.
         """
         state, started = context.userdata, time.time()
-        args = {"preferred_date": preferred_date, "part_of_day": part_of_day}
+        args = {"day": day, "part_of_day": part_of_day}
         if not state.identity_verified:
             state.record_tool("get_available_slots", args, "identity not verified", ok=False, started=started)
             raise ToolError("Identity must be verified before scheduling.")
-        try:
-            day = date.fromisoformat(preferred_date) if preferred_date else None
-        except ValueError:
-            day = None
-        slots = scheduler().available_slots(preferred_date=day, part_of_day=part_of_day, limit=2)
+        wanted = resolve_day(day)
+        slots = scheduler().available_slots(on_day=wanted, part_of_day=part_of_day, limit=2)
+        note = ""
+        if wanted and not slots:
+            slots = scheduler().available_slots(preferred_date=wanted, part_of_day=part_of_day, limit=2)
+            note = f"There are no open slots on {wanted:%A, %B} {wanted.day}; these are the next available. "
+        state.offered_slots.update(s.slot_id for s in slots)
         if slots:
             result = {
                 "slots": [{"slot_id": s.slot_id, "description": s.spoken} for s in slots],
-                "next_step": "Offer these options. When the patient picks one, you MUST call book_appointment with "
-                "its slot_id BEFORE saying it is booked. Do not invent a confirmation number.",
+                "next_step": note + "Offer these options. When the patient picks one, you MUST call book_appointment "
+                "with its slot_id BEFORE saying it is booked. Do not invent a confirmation number.",
             }
         else:
             first, last = SLOT_TIMES[0], SLOT_TIMES[-1]
@@ -173,6 +179,12 @@ class CareCoordinator(Agent):
         if not state.identity_verified:
             state.record_tool("book_appointment", args, "identity not verified", ok=False, started=started)
             raise ToolError("Identity must be verified before booking.")
+        if slot_id not in state.offered_slots:
+            state.record_tool("book_appointment", args, "slot was not offered", ok=False, started=started)
+            raise ToolError(
+                "That slot_id was not offered on this call. Call get_available_slots for the day and time the "
+                "patient wants, offer those options, and book only the one they choose."
+            )
         try:
             booking = scheduler().book(state.context.patient.patient_id, slot_id, "Lab results consultation")
         except SlotUnavailableError as e:

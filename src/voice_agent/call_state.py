@@ -61,6 +61,7 @@ class CallState:
     identity_verified: bool = False
     identity_attempts: int = 0
     booking: dict | None = None
+    offered_slots: set[str] = field(default_factory=set)
     escalated: bool = False
     voicemail: bool = False
     end_reason: str = "unknown"

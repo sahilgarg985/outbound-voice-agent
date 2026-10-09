@@ -115,3 +115,17 @@ def test_speakable_expands_titles_and_whole_hours():
 
     assert speakable("at 2:00 PM with Dr. Mehta.") == "at 2 PM with Doctor Mehta."
     assert speakable("at 10:30 AM") == "at 10:30 AM"
+
+
+def test_resolve_day_and_exact_day_filter(scheduler):
+    from voice_agent.scheduling import resolve_day
+
+    friday = date(2026, 10, 9)
+    assert resolve_day("Thursday", friday) == date(2026, 10, 15)
+    assert resolve_day("next monday", friday) == date(2026, 10, 12)
+    assert resolve_day("friday", friday) == date(2026, 10, 16)
+    assert resolve_day("tomorrow", friday) == date(2026, 10, 10)
+    assert resolve_day("2026-10-14", friday) == date(2026, 10, 14)
+    assert resolve_day("someday", friday) is None
+    slots = scheduler.available_slots(on_day=date(2026, 10, 15), limit=10)
+    assert slots and all(s.start.date() == date(2026, 10, 15) for s in slots)

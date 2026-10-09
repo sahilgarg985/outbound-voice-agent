@@ -30,6 +30,27 @@ class Booking(BaseModel):
     reason: str
 
 
+WEEKDAYS = ("monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday")
+
+
+def resolve_day(spoken: str | None, today: date | None = None) -> date | None:
+    if not spoken:
+        return None
+    text = spoken.strip().lower()
+    today = today or date.today()
+    if text == "today":
+        return today
+    if text == "tomorrow":
+        return today + timedelta(days=1)
+    for i, name in enumerate(WEEKDAYS):
+        if name in text:
+            return today + timedelta(days=(i - today.weekday() - 1) % 7 + 1)
+    try:
+        return date.fromisoformat(text)
+    except ValueError:
+        return None
+
+
 class SlotUnavailableError(Exception):
     pass
 
@@ -66,12 +87,18 @@ class Scheduler:
         return {row[0] for row in self._db.execute("SELECT slot_id FROM bookings")}
 
     def available_slots(
-        self, preferred_date: date | None = None, part_of_day: str | None = None, limit: int = 3
+        self,
+        preferred_date: date | None = None,
+        part_of_day: str | None = None,
+        limit: int = 3,
+        on_day: date | None = None,
     ) -> list[Slot]:
         booked = self._booked_ids()
         slots = [s for s in self._all_slots() if s.slot_id not in booked]
         if preferred_date:
             slots = [s for s in slots if s.start.date() >= preferred_date]
+        if on_day:
+            slots = [s for s in slots if s.start.date() == on_day]
         if part_of_day == "morning":
             slots = [s for s in slots if s.start.hour < 12]
         elif part_of_day == "afternoon":

@@ -24,9 +24,10 @@ trigger-call ──► LiveKit Cloud ──► agent worker (agent.py)
 1. `trigger-call` creates a LiveKit room and dispatches the agent into it with the patient's details as metadata.
 2. The agent greets the patient and asks for their full name and date of birth. `verify_identity` checks them in code. The lab results are not in the prompt; the tool only returns them after verification succeeds.
 3. Lab values are interpreted in code against fixed reference ranges (`biomarkers.py`). The LLM only says them in natural language.
-4. The agent offers slots from `get_available_slots` and books with `book_appointment`, which writes to SQLite and returns a confirmation number. Critical values trigger `escalate_to_clinician`.
-5. When the call ends, the analysis step asks the LLM what happened (outcome, booked, sentiment, summary) and compares its claims with what the tools actually did. Tool evidence wins, and any mismatch is recorded.
-6. The Opik module logs one trace per call. Opik's online evaluation rule then scores it automatically.
+4. The agent offers slots from `get_available_slots` and books with `book_appointment`, which writes to SQLite and returns a confirmation number. The patient can ask for a day ("Thursday", "tomorrow") or a time of day; the day is converted to a date in code, and if it has no openings the next available slots are offered. `book_appointment` only accepts slots that were offered on the call. Critical values trigger `escalate_to_clinician`.
+5. The agent ends the call with LiveKit's built-in `EndCallTool`, which says goodbye and hangs up.
+6. When the call ends, the analysis step asks the LLM what happened (outcome, booked, sentiment, summary) and compares its claims with what the tools actually did. Tool evidence wins, and any mismatch is recorded.
+7. The Opik module logs one trace per call. Opik's online evaluation rule then scores it automatically.
 
 ## Requirements coverage
 
@@ -68,8 +69,20 @@ The speech server downloads Whisper `small.en` and Kokoro (about 650 MB) the fir
 
 ### Configure
 
+Create a `.env` file in the project folder:
+
 ```bash
-cp .env.example .env
+LIVEKIT_URL=wss://your-project.livekit.cloud
+LIVEKIT_API_KEY=
+LIVEKIT_API_SECRET=
+
+LLM_MODEL=qwen3:8b
+LLM_REASONING_EFFORT=none
+
+OPIK_API_KEY=
+OPIK_WORKSPACE=
+OPIK_PROJECT_NAME=outbound-voice-agent
+OPIK_JUDGE_MODEL=opik-free-model
 ```
 
 Fill in:
@@ -111,7 +124,7 @@ It prints a link. Open it, allow the microphone and answer as the patient. The e
 
 After the call:
 
-- `recordings/<call_id>/` contains `recording.ogg`, `transcript.txt` and `analysis.json`
+- `recordings/<call_id>/` (call IDs start with the date and time, e.g. `call_20261009-162644_d2f109`) contains `recording.ogg`, `transcript.txt` and `analysis.json`
 - Opik → project `outbound-voice-agent` → Traces shows the full trace, with judge scores added within a minute or two
 
 ### Example patients
@@ -185,6 +198,8 @@ The judge uses Opik's built-in free model (`opik-free-model`), so no extra API k
 - **Local models behind OpenAI-compatible APIs.** Ollama serves the LLM and `speech_server.py` serves Whisper and Kokoro on the same endpoints as OpenAI's API, so LiveKit's existing OpenAI plugin works without custom plugins. Switching to a hosted provider is a change in `.env`.
 - **Reasoning disabled for the live agent** (`LLM_REASONING_EFFORT=none`). With qwen3's thinking step on, replies took 10 seconds or more; with it off, under a second.
 - **Silence handling.** If both sides are silent for 15 seconds, the agent says goodbye and hangs up. The calls are also capped at 7 minutes.
+- **Tools validate their inputs.** `verify_identity` checks the date of birth exactly, `book_appointment` rejects slots that were not offered, and spoken days are turned into dates in code, because the model is unreliable at date arithmetic.
+- **Speech-to-text ignores non-speech.** Whisper runs with its voice activity filter so background noise is not transcribed as words.
 
 ## Project structure
 
@@ -221,6 +236,6 @@ In SIP mode, unanswered and busy calls are recorded as `no_answer` without invol
 ## Known limitations
 
 - Responses take about 5 seconds end to end, because the LLM, speech-to-text and text-to-speech all run on a laptop CPU. Hosted models would reduce this.
-- The 8B model sometimes says goodbye without calling `end_call`. The silence timeout ends those calls.
+- The 8B model sometimes says goodbye without calling `end_call`. Those calls end when the patient hangs up or after the silence timeout.
 - The SIP phone path has not been tested against a live trunk.
 - Appointment slots are generated (weekdays, 9 AM to 4 PM, two doctors) rather than read from a real calendar.

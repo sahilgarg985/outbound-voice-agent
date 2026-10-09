@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import uuid
-from datetime import date
+from datetime import date, datetime
 from enum import StrEnum
 from typing import Literal
 
@@ -61,7 +61,7 @@ CallMode = Literal["sip", "web", "console"]
 
 
 class CallContext(BaseModel):
-    call_id: str = Field(default_factory=lambda: f"call_{uuid.uuid4().hex[:10]}")
+    call_id: str = Field(default_factory=lambda: f"call_{datetime.now():%Y%m%d-%H%M%S}_{uuid.uuid4().hex[:6]}")
     patient: Patient
     mode: CallMode = "web"
     room_name: str | None = None
